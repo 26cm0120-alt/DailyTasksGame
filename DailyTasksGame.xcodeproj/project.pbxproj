@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A04C00000000000000000001 /* AppCore in Frameworks */ = {isa = PBXBuildFile; productRef = A04C00000000000000000002 /* AppCore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		7F6D9FFB30AB229B00CA7366 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A04C00000000000000000001 /* AppCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = DailyTasksGame;
 			packageProductDependencies = (
+				A04C00000000000000000002 /* AppCore */,
 			);
 			productName = DailyTasksGame;
 			productReference = 7F6D9FEB30AB229A00CA7366 /* DailyTasksGame.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = 7F6D9FE230AB229A00CA7366;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A04C00000000000000000003 /* XCLocalSwiftPackageReference "Packages/AppCore" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7F6D9FEC30AB229A00CA7366 /* Products */;
 			projectDirPath = "";
@@ -541,6 +550,21 @@
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A04C00000000000000000003 /* XCLocalSwiftPackageReference "Packages/AppCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/AppCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A04C00000000000000000002 /* AppCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A04C00000000000000000003 /* XCLocalSwiftPackageReference "Packages/AppCore" */;
+			productName = AppCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCConfigurationList section */
 		7F6D9FE630AB229A00CA7366 /* Build configuration list for PBXProject "DailyTasksGame" */ = {
