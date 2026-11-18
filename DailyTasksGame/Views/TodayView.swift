@@ -13,7 +13,14 @@ struct TodayView: View {
                 Button {
                     editingGame = game
                 } label: {
-                    Text(game.name)
+                    HStack {
+                        Text(game.name)
+                        if !game.isActive {
+                            Spacer()
+                            Text("休止中")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
             }

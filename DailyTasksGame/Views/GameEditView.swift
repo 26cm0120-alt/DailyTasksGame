@@ -11,6 +11,7 @@ struct GameEditView: View {
     @State private var weeklyResetWeekday: Int
     @State private var weeklyResetTime: ResetTime
     @State private var note: String
+    @State private var isPaused: Bool
     @State private var saveError: String?
 
     init(game: Game) {
@@ -21,6 +22,7 @@ struct GameEditView: View {
         _weeklyResetWeekday = State(initialValue: game.weeklyResetWeekday)
         _weeklyResetTime = State(initialValue: game.weeklyResetTime)
         _note = State(initialValue: game.note)
+        _isPaused = State(initialValue: !game.isActive)
     }
 
     private var isNameValid: Bool {
@@ -54,6 +56,10 @@ struct GameEditView: View {
                 Section("メモ（任意）") {
                     TextField("メモ", text: $note, axis: .vertical)
                 }
+
+                Section {
+                    Toggle("休止", isOn: $isPaused)
+                }
             }
             .navigationTitle("ゲームを編集")
             .toolbar {
@@ -80,12 +86,13 @@ struct GameEditView: View {
         guard isNameValid else { return }
 
         // モデルへの代入は保存ボタンを押した時だけ行う。
-        // 表示順・有効状態・タスクや完了記録には触れない。
+        // 表示順・タスクや完了記録には触れない。
         game.name = name
         game.resetTime = resetTime
         game.weeklyResetWeekday = weeklyResetWeekday
         game.weeklyResetTime = weeklyResetTime
         game.note = note
+        game.isActive = !isPaused
 
         do {
             try modelContext.save()
