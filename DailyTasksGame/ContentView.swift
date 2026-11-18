@@ -5,12 +5,26 @@
 //  Created by cmStudent on 2026/11/16.
 //
 
-import AppCore
 import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        Text("デイリータスク管理\nAppCore \(appCoreVersion)")
+        TabView {
+            TodayView()
+                .tabItem {
+                    Label("今日", systemImage: "list.bullet")
+                }
+
+            StatisticsView()
+                .tabItem {
+                    Label("統計", systemImage: "chart.bar")
+                }
+
+            SettingsView()
+                .tabItem {
+                    Label("設定", systemImage: "gearshape")
+                }
+        }
     }
 }
 
