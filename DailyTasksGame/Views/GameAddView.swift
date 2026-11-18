@@ -110,7 +110,7 @@ struct GameAddView: View {
 }
 
 // 時刻設定を日付に変換せず、時・分として直接入力する。
-private struct ResetTimeInput: View {
+struct ResetTimeInput: View {
     @Binding var time: ResetTime
 
     var body: some View {
