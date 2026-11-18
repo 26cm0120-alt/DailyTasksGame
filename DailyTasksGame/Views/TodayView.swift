@@ -6,15 +6,14 @@ struct TodayView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Game.sortOrder) private var games: [Game]
     @State private var isAddingGame = false
-    @State private var editingGame: Game?
     @State private var reorderError: String?
 
     var body: some View {
         NavigationStack {
             List {
                 ForEach(games) { game in
-                    Button {
-                        editingGame = game
+                    NavigationLink {
+                        GameDetailView(game: game)
                     } label: {
                         HStack {
                             Text(game.name)
@@ -42,9 +41,6 @@ struct TodayView: View {
             }
             .sheet(isPresented: $isAddingGame) {
                 GameAddView()
-            }
-            .sheet(item: $editingGame) { game in
-                GameEditView(game: game)
             }
             .alert("並び順を保存できませんでした", isPresented: Binding(
                 get: { reorderError != nil },
