@@ -18,12 +18,17 @@ struct GameDetailView: View {
 
     var body: some View {
         List(tasks) { task in
-            HStack {
-                Text(task.title)
-                Spacer()
-                Text(task.kind == .daily ? "デイリー" : "ウィークリー")
-                    .foregroundStyle(.secondary)
+            Button {
+                selectedTask = task
+            } label: {
+                HStack {
+                    Text(task.title)
+                    Spacer()
+                    Text(task.kind == .daily ? "デイリー" : "ウィークリー")
+                        .foregroundStyle(.secondary)
+                }
             }
+            .buttonStyle(.plain)
         }
         .navigationTitle(game.name)
         .toolbar {
@@ -42,5 +47,10 @@ struct GameDetailView: View {
         .sheet(isPresented: $isAddingTask) {
             TaskAddView(game: game)
         }
+        .sheet(item: $selectedTask) { task in
+            TaskEditView(task: task)
+        }
     }
+
+    @State private var selectedTask: TaskItem?
 }

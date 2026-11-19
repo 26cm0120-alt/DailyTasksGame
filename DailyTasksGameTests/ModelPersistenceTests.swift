@@ -167,4 +167,54 @@ struct ModelPersistenceTests {
         _ = try Game(name: " ゲーム ", sortOrder: 1)
         _ = try TaskItem(title: String(repeating: "あ", count: 10_000), game: game, sortOrder: 2)
     }
+
+    @Test func changingTaskKindDeletesOnlyItsCompletionRecords() throws {
+        try withTemporaryStore { url in
+            let ids = try seedStore(at: url)
+            let container = try openStore(at: url)
+            let context = ModelContext(container)
+            let task = try #require(
+                context.fetch(FetchDescriptor<TaskItem>()).first { $0.id == ids[2] }
+            )
+
+            task.kind = .weekly
+            task.completionRecords.forEach(context.delete)
+            try context.save()
+
+            let reopened = try openStore(at: url)
+            let reopenedContext = ModelContext(reopened)
+            let records = try reopenedContext.fetch(FetchDescriptor<CompletionRecord>())
+            #expect(Set(records.map(\.id)) == Set([ids[6], ids[7]]))
+            let changedTask = try #require(
+                reopenedContext.fetch(FetchDescriptor<TaskItem>()).first { $0.id == ids[2] }
+            )
+            #expect(changedTask.kind == .weekly)
+            #expect(changedTask.completionRecords.isEmpty)
+        }
+    }
+
+    @Test func renamingTaskPreservesCompletionRecords() throws {
+        try withTemporaryStore { url in
+            let ids = try seedStore(at: url)
+            let container = try openStore(at: url)
+            let context = ModelContext(container)
+            let task = try #require(
+                context.fetch(FetchDescriptor<TaskItem>()).first { $0.id == ids[2] }
+            )
+
+            task.title = "変更後の名前"
+            try context.save()
+
+            let reopened = try openStore(at: url)
+            let reopenedContext = ModelContext(reopened)
+            let renamedTask = try #require(
+                reopenedContext.fetch(FetchDescriptor<TaskItem>()).first { $0.id == ids[2] }
+            )
+            #expect(renamedTask.title == "変更後の名前")
+            #expect(renamedTask.kind == .daily)
+            #expect(renamedTask.completionRecords.map(\.id) == [ids[5]])
+            #expect(Set(try reopenedContext.fetch(FetchDescriptor<CompletionRecord>()).map(\.id))
+                == Set([ids[5], ids[6], ids[7]]))
+        }
+    }
 }
