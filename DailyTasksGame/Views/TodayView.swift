@@ -7,6 +7,8 @@ struct TodayView: View {
     @Query(sort: \Game.sortOrder) private var games: [Game]
     @State private var isAddingGame = false
     @State private var reorderError: String?
+    @State private var deletionTarget: Game?
+    @State private var deletionError: String?
 
     var body: some View {
         NavigationStack {
@@ -27,6 +29,7 @@ struct TodayView: View {
                     .buttonStyle(.plain)
                 }
                 .onMove(perform: moveGames)
+                .onDelete(perform: requestGameDeletion)
             }
             .navigationTitle("今日")
             .toolbar {
@@ -50,6 +53,24 @@ struct TodayView: View {
             } message: {
                 Text(reorderError ?? "")
             }
+            .alert(item: $deletionTarget) { game in
+                Alert(
+                    title: Text("ゲームを削除しますか"),
+                    message: Text("「\(game.name)」を削除します。\nタスクと完了記録もすべて削除されます。"),
+                    primaryButton: .destructive(Text("削除")) {
+                        deleteGame(game)
+                    },
+                    secondaryButton: .cancel(Text("やめる"))
+                )
+            }
+            .alert("ゲームを削除できませんでした", isPresented: Binding(
+                get: { deletionError != nil },
+                set: { if !$0 { deletionError = nil } }
+            )) {
+                Button("OK", role: .cancel) { deletionError = nil }
+            } message: {
+                Text(deletionError ?? "")
+            }
         }
     }
 
@@ -66,6 +87,27 @@ struct TodayView: View {
         } catch {
             modelContext.rollback()
             reorderError = error.localizedDescription
+        }
+    }
+
+    private func requestGameDeletion(at offsets: IndexSet) {
+        guard let index = offsets.first, games.indices.contains(index) else { return }
+        deletionTarget = games[index]
+    }
+
+    private func deleteGame(_ game: Game) {
+        let remainingGames = games.filter { $0.id != game.id }
+
+        modelContext.delete(game)
+        for (index, remainingGame) in remainingGames.enumerated() {
+            remainingGame.sortOrder = index
+        }
+
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            deletionError = error.localizedDescription
         }
     }
 }

@@ -111,6 +111,47 @@ struct ModelPersistenceTests {
         }
     }
 
+    @Test func deletingGameRecompactsOrderAndCascadesOnlyItsContents() throws {
+        try withTemporaryStore { url in
+            let ids = try seedStore(at: url)
+            let container = try openStore(at: url)
+            let context = ModelContext(container)
+            context.autosaveEnabled = false
+
+            let allGames = try context.fetch(
+                FetchDescriptor<Game>(sortBy: [SortDescriptor(\Game.sortOrder)])
+            )
+            let deletedGame = try #require(allGames.first { $0.id == ids[0] })
+            let remainingGames = allGames.filter { $0.id != ids[0] }
+
+            context.delete(deletedGame)
+            for (index, game) in remainingGames.enumerated() {
+                game.sortOrder = index
+            }
+            try context.save()
+
+            let reopened = try openStore(at: url)
+            let reopenedContext = ModelContext(reopened)
+            let reopenedGames = try reopenedContext.fetch(
+                FetchDescriptor<Game>(sortBy: [SortDescriptor(\Game.sortOrder)])
+            )
+            #expect(reopenedGames.map(\.id) == [ids[1]])
+            #expect(reopenedGames.map(\.sortOrder) == [0])
+            #expect(reopenedGames.map(\.name) == ["ゲームB"])
+
+            let reopenedTasks = try reopenedContext.fetch(FetchDescriptor<TaskItem>())
+            #expect(reopenedTasks.map(\.id) == [ids[4]])
+            #expect(reopenedTasks[0].title == "別ゲーム")
+            #expect(reopenedTasks[0].game.id == ids[1])
+
+            let reopenedRecords = try reopenedContext.fetch(FetchDescriptor<CompletionRecord>())
+            #expect(reopenedRecords.map(\.id) == [ids[7]])
+            #expect(reopenedRecords[0].task.id == ids[4])
+            #expect(!reopenedRecords.contains { $0.id == ids[5] })
+            #expect(!reopenedRecords.contains { $0.id == ids[6] })
+        }
+    }
+
     private func deleteTask(at url: URL, id: UUID) throws {
         let container = try openStore(at: url)
         let context = ModelContext(container)
