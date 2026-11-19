@@ -244,4 +244,40 @@ struct ModelPersistenceTests {
                 == Set([ids[5], ids[6], ids[7]]))
         }
     }
+
+    @Test func reorderingTasksPreservesValuesAndCompletionRecords() throws {
+        try withTemporaryStore { url in
+            let ids = try seedStore(at: url)
+            let container = try openStore(at: url)
+            let context = ModelContext(container)
+            context.autosaveEnabled = false
+            let tasks = try context.fetch(FetchDescriptor<TaskItem>())
+                .filter { $0.game.id == ids[0] }
+                .sorted { $0.sortOrder < $1.sortOrder }
+            #expect(tasks.map(\.id) == [ids[3], ids[2]])
+
+            for (index, task) in tasks.reversed().enumerated() {
+                task.sortOrder = index
+            }
+            try context.save()
+
+            let reopened = try openStore(at: url)
+            let reopenedContext = ModelContext(reopened)
+            let reorderedTasks = try reopenedContext.fetch(
+                FetchDescriptor<TaskItem>(
+                    predicate: #Predicate<TaskItem> { $0.game.id == ids[0] },
+                    sortBy: [SortDescriptor(\TaskItem.sortOrder)]
+                )
+            )
+            #expect(reorderedTasks.map(\.id) == [ids[2], ids[3]])
+            #expect(reorderedTasks.map(\.sortOrder) == [0, 1])
+            #expect(reorderedTasks.map(\.title) == ["日次", "週次"])
+            #expect(reorderedTasks.map(\.kind) == [.daily, .weekly])
+            #expect(reorderedTasks.map(\.isEnabled) == [true, false])
+            #expect(reorderedTasks[0].completionRecords.map(\.id) == [ids[5]])
+            #expect(reorderedTasks[1].completionRecords.map(\.id) == [ids[6]])
+            #expect(Set(try reopenedContext.fetch(FetchDescriptor<CompletionRecord>()).map(\.id))
+                == Set([ids[5], ids[6], ids[7]]))
+        }
+    }
 }
