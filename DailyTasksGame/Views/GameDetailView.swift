@@ -24,9 +24,15 @@ struct GameDetailView: View {
                 HStack {
                     Text(task.title)
                     Spacer()
-                    Text(task.kind == .daily ? "デイリー" : "ウィークリー")
-                        .foregroundStyle(.secondary)
+                    if task.isEnabled {
+                        Text(task.kind == .daily ? "デイリー" : "ウィークリー")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(task.kind == .daily ? "デイリー・無効" : "ウィークリー・無効")
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .foregroundStyle(task.isEnabled ? .primary : .secondary)
             }
             .buttonStyle(.plain)
         }

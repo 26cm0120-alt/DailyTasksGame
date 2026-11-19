@@ -8,6 +8,7 @@ struct TaskEditView: View {
     private let task: TaskItem
     @State private var name: String
     @State private var kind: TaskKind
+    @State private var isEnabled: Bool
     @State private var saveError: String?
     @State private var isConfirmingKindChange = false
 
@@ -15,6 +16,7 @@ struct TaskEditView: View {
         self.task = task
         _name = State(initialValue: task.title)
         _kind = State(initialValue: task.kind)
+        _isEnabled = State(initialValue: task.isEnabled)
     }
 
     private var isNameValid: Bool {
@@ -36,6 +38,9 @@ struct TaskEditView: View {
                         Text("デイリー").tag(TaskKind.daily)
                         Text("ウィークリー").tag(TaskKind.weekly)
                     }
+                }
+                Section {
+                    Toggle("有効", isOn: $isEnabled)
                 }
             }
             .navigationTitle("タスクを編集")
@@ -80,6 +85,7 @@ struct TaskEditView: View {
         guard isNameValid else { return }
 
         task.title = name
+        task.isEnabled = isEnabled
         if isKindChanged {
             task.completionRecords.forEach(modelContext.delete)
             task.kind = kind

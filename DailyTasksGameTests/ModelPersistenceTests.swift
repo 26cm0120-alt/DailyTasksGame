@@ -217,4 +217,31 @@ struct ModelPersistenceTests {
                 == Set([ids[5], ids[6], ids[7]]))
         }
     }
+
+    @Test func disablingTaskPreservesRecordsAndSortOrder() throws {
+        try withTemporaryStore { url in
+            let ids = try seedStore(at: url)
+            let container = try openStore(at: url)
+            let context = ModelContext(container)
+            context.autosaveEnabled = false
+            let task = try #require(
+                context.fetch(FetchDescriptor<TaskItem>()).first { $0.id == ids[2] }
+            )
+            let originalSortOrder = task.sortOrder
+
+            task.isEnabled = false
+            try context.save()
+
+            let reopened = try openStore(at: url)
+            let reopenedContext = ModelContext(reopened)
+            let disabledTask = try #require(
+                reopenedContext.fetch(FetchDescriptor<TaskItem>()).first { $0.id == ids[2] }
+            )
+            #expect(!disabledTask.isEnabled)
+            #expect(disabledTask.sortOrder == originalSortOrder)
+            #expect(disabledTask.completionRecords.map(\.id) == [ids[5]])
+            #expect(Set(try reopenedContext.fetch(FetchDescriptor<CompletionRecord>()).map(\.id))
+                == Set([ids[5], ids[6], ids[7]]))
+        }
+    }
 }
