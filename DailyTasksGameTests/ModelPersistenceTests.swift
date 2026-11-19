@@ -136,6 +136,48 @@ struct ModelPersistenceTests {
         }
     }
 
+    @Test func deletingTaskRecompactsOrderAndCascadesOnlyItsRecords() throws {
+        try withTemporaryStore { url in
+            let ids = try seedStore(at: url)
+            let container = try openStore(at: url)
+            let context = ModelContext(container)
+            context.autosaveEnabled = false
+
+            let gameTasks = try context.fetch(
+                FetchDescriptor<TaskItem>(
+                    predicate: #Predicate<TaskItem> { $0.game.id == ids[0] },
+                    sortBy: [SortDescriptor(\TaskItem.sortOrder)]
+                )
+            )
+            let deletedTask = try #require(gameTasks.first { $0.id == ids[2] })
+            let remainingTasks = gameTasks.filter { $0.id != ids[2] }
+
+            context.delete(deletedTask)
+            for (index, task) in remainingTasks.enumerated() {
+                task.sortOrder = index
+            }
+            try context.save()
+
+            let reopened = try openStore(at: url)
+            let reopenedContext = ModelContext(reopened)
+            let reopenedTasks = try reopenedContext.fetch(
+                FetchDescriptor<TaskItem>(
+                    predicate: #Predicate<TaskItem> { $0.game.id == ids[0] },
+                    sortBy: [SortDescriptor(\TaskItem.sortOrder)]
+                )
+            )
+            #expect(reopenedTasks.map(\.id) == [ids[3]])
+            #expect(reopenedTasks.map(\.sortOrder) == [0])
+            #expect(reopenedTasks.map(\.title) == ["週次"])
+
+            let records = try reopenedContext.fetch(FetchDescriptor<CompletionRecord>())
+            #expect(Set(records.map(\.id)) == Set([ids[6], ids[7]]))
+            #expect(!records.contains { $0.id == ids[5] })
+            #expect(reopenedTasks[0].completionRecords.map(\.id) == [ids[6]])
+            #expect(records.first { $0.id == ids[7] }?.task.id == ids[4])
+        }
+    }
+
     @Test func defaultsAndIndependentWeeklyTime() throws {
         let game = try Game(name: "ゲーム", sortOrder: 0)
         let task = try TaskItem(title: "タスク", game: game, sortOrder: 0)

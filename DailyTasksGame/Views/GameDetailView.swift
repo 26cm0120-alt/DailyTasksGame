@@ -8,6 +8,8 @@ struct GameDetailView: View {
     @State private var isAddingTask = false
     @State private var isEditingGame = false
     @State private var reorderError: String?
+    @State private var deletionTarget: TaskItem?
+    @State private var deletionError: String?
 
     init(game: Game) {
         self.game = game
@@ -40,6 +42,7 @@ struct GameDetailView: View {
                 .buttonStyle(.plain)
             }
             .onMove(perform: moveTasks)
+            .onDelete(perform: requestTaskDeletion)
         }
         .navigationTitle(game.name)
         .toolbar {
@@ -72,6 +75,24 @@ struct GameDetailView: View {
         } message: {
             Text(reorderError ?? "")
         }
+        .alert(item: $deletionTarget) { task in
+            Alert(
+                title: Text("タスクを削除しますか"),
+                message: Text("「\(task.title)」を削除します。\n完了記録も削除されます。"),
+                primaryButton: .destructive(Text("削除")) {
+                    deleteTask(task)
+                },
+                secondaryButton: .cancel(Text("やめる"))
+            )
+        }
+        .alert("タスクを削除できませんでした", isPresented: Binding(
+            get: { deletionError != nil },
+            set: { if !$0 { deletionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { deletionError = nil }
+        } message: {
+            Text(deletionError ?? "")
+        }
     }
 
     @State private var selectedTask: TaskItem?
@@ -89,6 +110,27 @@ struct GameDetailView: View {
         } catch {
             modelContext.rollback()
             reorderError = error.localizedDescription
+        }
+    }
+
+    private func requestTaskDeletion(at offsets: IndexSet) {
+        guard let index = offsets.first, tasks.indices.contains(index) else { return }
+        deletionTarget = tasks[index]
+    }
+
+    private func deleteTask(_ task: TaskItem) {
+        let remainingTasks = tasks.filter { $0.id != task.id }
+
+        modelContext.delete(task)
+        for (index, remainingTask) in remainingTasks.enumerated() {
+            remainingTask.sortOrder = index
+        }
+
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            deletionError = error.localizedDescription
         }
     }
 }
