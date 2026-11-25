@@ -62,10 +62,11 @@ struct GameDayCalculatorTests {
             weeklyEnd: "2026-11-08T06:30:00Z", dailyBefore: "2026-10-31",
             weeklyBefore: "2026-10-25", key: "2026-11-01")
         let reset = GameDayCalculator.ResetTime(hour: 1, minute: 30)
+        let timeZone = try #require(TimeZone(identifier: "America/New_York"))
         for now in ["2026-11-01T06:00:00Z", "2026-11-01T06:30:00Z"] {
             let periods = try #require(GameDayCalculator.periods(
                 now: instant(now), dailyReset: reset, weeklyResetWeekday: 1, weeklyReset: reset,
-                calendar: Calendar(identifier: .gregorian), timeZone: #require(TimeZone(identifier: "America/New_York"))
+                calendar: Calendar(identifier: .gregorian), timeZone: timeZone
             ))
             #expect(periods.daily.key == "2026-11-01")
             #expect(periods.weekly.key == "2026-11-01")
@@ -75,11 +76,12 @@ struct GameDayCalculatorTests {
     }
 
     @Test func weeklyKeyIsIndependentOfDailyReset() throws {
+        let timeZone = try #require(TimeZone(identifier: "Asia/Tokyo"))
         let periods = try #require(GameDayCalculator.periods(
             now: instant("2026-11-15T19:00:00Z"),
             dailyReset: .init(hour: 5, minute: 0),
             weeklyResetWeekday: 2, weeklyReset: .init(hour: 4, minute: 0),
-            calendar: Calendar(identifier: .gregorian), timeZone: #require(TimeZone(identifier: "Asia/Tokyo"))
+            calendar: Calendar(identifier: .gregorian), timeZone: timeZone
         ))
         #expect(periods.daily.key == "2026-11-15")
         #expect(periods.weekly.key == "2026-11-16")
