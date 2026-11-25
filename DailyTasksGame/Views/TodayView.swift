@@ -3,6 +3,7 @@ import SwiftData
 import SwiftUI
 
 struct TodayView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Game.sortOrder) private var games: [Game]
     @State private var isAddingGame = false
@@ -18,6 +19,10 @@ struct TodayView: View {
                         GameDetailView(game: game)
                     } label: {
                         HStack {
+                            Circle()
+                                .fill(GamePaletteColors.color(at: game.colorPaletteIndex, scheme: colorScheme))
+                                .frame(width: 10, height: 10)
+                                .accessibilityHidden(true)
                             Text(game.name)
                             if !game.isActive {
                                 Spacer()
@@ -43,7 +48,7 @@ struct TodayView: View {
                 }
             }
             .sheet(isPresented: $isAddingGame) {
-                GameAddView()
+                GameAddView(existingGameCount: games.count)
             }
             .alert("並び順を保存できませんでした", isPresented: Binding(
                 get: { reorderError != nil },

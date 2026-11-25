@@ -36,7 +36,7 @@ struct ModelPersistenceTests {
                             resetTime: ResetTime(hour: 4, minute: 30),
                             weeklyResetWeekday: 3,
                             weeklyResetTime: ResetTime(hour: 6, minute: 15),
-                            isActive: false, note: "保存確認")
+                            isActive: false, note: "保存確認", colorPaletteIndex: 8)
         let otherGame = try Game(name: "ゲームB", sortOrder: 0)
         context.insert(game)
         context.insert(otherGame)
@@ -74,6 +74,9 @@ struct ModelPersistenceTests {
             #expect(game.weeklyResetTime == ResetTime(hour: 6, minute: 15))
             #expect(!game.isActive)
             #expect(game.note == "保存確認")
+            #expect(game.colorPaletteIndex == 8)
+            let defaultGame = try #require(games.first)
+            #expect(defaultGame.colorPaletteIndex == 0)
             let tasks = game.tasks.sorted { $0.sortOrder < $1.sortOrder }
             #expect(tasks.map(\.id) == [ids[3], ids[2]])
             #expect(tasks.map(\.title) == ["週次", "日次"])
