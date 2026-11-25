@@ -93,6 +93,111 @@ struct ModelPersistenceTests {
         }
     }
 
+    private func seedCompletionTask(at url: URL, kind: TaskKind, isEnabled: Bool = true) throws {
+        let container = try openStore(at: url)
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        let game = try Game(name: "ゲーム", sortOrder: 0, weeklyResetTime: .init(hour: 4, minute: 0))
+        let task = try TaskItem(title: "タスク", game: game, sortOrder: 0, kind: kind, isEnabled: isEnabled)
+        context.insert(game)
+        context.insert(task)
+        try context.save()
+    }
+
+    private func completionContext(at url: URL) throws -> ModelContext {
+        let context = ModelContext(try openStore(at: url))
+        context.autosaveEnabled = false
+        return context
+    }
+
+    private func changeCompletion(
+        _ change: TaskCompletion.Change, at time: String, in context: ModelContext
+    ) throws {
+        let now = try #require(ISO8601DateFormatter().date(from: time))
+        let zone = try #require(TimeZone(identifier: "Asia/Tokyo"))
+        let task = try #require(context.fetch(FetchDescriptor<TaskItem>()).first)
+        try TaskCompletion.apply(change, to: task, context: context, now: now, timeZone: zone)
+    }
+
+    private func applyCompletionChanges(
+        _ changes: [(TaskCompletion.Change, String)], at url: URL
+    ) throws {
+        let context = try completionContext(at: url)
+        for (change, time) in changes {
+            try changeCompletion(change, at: time, in: context)
+        }
+    }
+
+    @Test func dailyCompletionPersistsWithoutDuplicatingOrReplacingTimestamp() throws {
+        try withTemporaryStore { url in
+            try seedCompletionTask(at: url, kind: .daily)
+            // 東京の月曜4:00は日次リセット前なので、ゲーム日は日曜。
+            let completedAt = "2026-11-15T19:00:00Z"
+            try applyCompletionChanges([
+                (.complete, completedAt),
+                (.complete, "2026-11-15T19:15:00Z")
+            ], at: url)
+
+            let reopened = try completionContext(at: url)
+            let records = try reopened.fetch(FetchDescriptor<CompletionRecord>())
+            #expect(records.count == 1)
+            let record = try #require(records.first)
+            #expect(record.periodKey == "2026-11-15")
+            #expect(record.completedAt == ISO8601DateFormatter().date(from: completedAt))
+            let task = try #require(reopened.fetch(FetchDescriptor<TaskItem>()).first)
+            #expect(record.task.id == task.id)
+        }
+    }
+
+    @Test func cancellationRemovesOnlyTheCurrentPeriod() throws {
+        try withTemporaryStore { url in
+            try seedCompletionTask(at: url, kind: .daily)
+            try applyCompletionChanges([
+                (.complete, "2026-11-15T19:00:00Z"),
+                (.complete, "2026-11-15T20:00:00Z"),
+                (.cancel, "2026-11-15T20:01:00Z")
+            ], at: url)
+
+            let reopened = try completionContext(at: url)
+            let records = try reopened.fetch(FetchDescriptor<CompletionRecord>())
+            #expect(records.map(\.periodKey) == ["2026-11-15"])
+        }
+    }
+
+    @Test func disabledWeeklyTaskUsesWeeklyBoundaryForCompletionAndCancellation() throws {
+        try withTemporaryStore { url in
+            try seedCompletionTask(at: url, kind: .weekly, isEnabled: false)
+            // 東京の月曜4:00は週次の境界だが、日次はまだ日曜。
+            let boundary = "2026-11-15T19:00:00Z"
+            try applyCompletionChanges([(.toggle, boundary)], at: url)
+            let reopened = try completionContext(at: url)
+            let records = try reopened.fetch(FetchDescriptor<CompletionRecord>())
+            #expect(records.map(\.periodKey) == ["2026-11-16"])
+            try changeCompletion(.toggle, at: boundary, in: reopened)
+            let afterCancellation = try completionContext(at: url)
+            #expect(try afterCancellation.fetchCount(FetchDescriptor<CompletionRecord>()) == 0)
+        }
+    }
+
+    @Test func aPreviousDailyRecordDoesNotCompleteTheCurrentGameDay() throws {
+        try withTemporaryStore { url in
+            try seedCompletionTask(at: url, kind: .daily)
+            try applyCompletionChanges([(.complete, "2026-11-15T19:00:00Z")], at: url)
+
+            let reopened = try completionContext(at: url)
+            let task = try #require(reopened.fetch(FetchDescriptor<TaskItem>()).first)
+            let records = try reopened.fetch(FetchDescriptor<CompletionRecord>())
+            #expect(records.map(\.periodKey) == ["2026-11-15"])
+            let now = try #require(ISO8601DateFormatter().date(from: "2026-11-15T20:00:00Z"))
+            let zone = try #require(TimeZone(identifier: "Asia/Tokyo"))
+            let periods = TaskCompletion.periods(for: task.game, now: now, timeZone: zone)
+            let key = TaskCompletion.periodKey(for: task.kind, in: periods)
+            #expect(key == "2026-11-16")
+            #expect(!TaskCompletion.isCompleted(in: records, periodKey: key))
+            #expect(TaskCompletion.isCompleted(in: records, periodKey: "2026-11-15"))
+        }
+    }
+
     private func deleteGame(at url: URL, id: UUID) throws {
         let container = try openStore(at: url)
         let context = ModelContext(container)
