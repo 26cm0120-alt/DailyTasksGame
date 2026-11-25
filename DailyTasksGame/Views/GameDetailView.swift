@@ -1,7 +1,9 @@
+import AppCore
 import SwiftData
 import SwiftUI
 
 struct GameDetailView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
     let game: Game
     @Query private var tasks: [TaskItem]
@@ -24,13 +26,16 @@ struct GameDetailView: View {
 
     var body: some View {
         let periods = TaskCompletion.periods(for: game, now: completionTime)
+        let nextBoundary = periods.map { min($0.daily.end, $0.weekly.end) }
+        let activeBoundary = scenePhase == .active ? nextBoundary : nil
 
         List {
             ForEach(tasks) { task in
+                let periodKey = TaskCompletion.periodKey(for: task.kind, in: periods)
                 TaskCompletionRow(
                     task: task,
-                    periodKey: TaskCompletion.periodKey(for: task.kind, in: periods),
-                    toggle: { toggleCompletion(task) },
+                    periodKey: periodKey,
+                    toggle: { toggleCompletion(task, displayedKey: periodKey) },
                     edit: { selectedTask = task }
                 )
             }
@@ -39,6 +44,13 @@ struct GameDetailView: View {
         }
         .navigationTitle(game.name)
         .onAppear { completionTime = .now }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { completionTime = .now }
+        }
+        .task(id: activeBoundary) {
+            guard let activeBoundary else { return }
+            await refreshCompletion(at: activeBoundary)
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 EditButton()
@@ -99,11 +111,28 @@ struct GameDetailView: View {
 
     @State private var selectedTask: TaskItem?
 
-    private func toggleCompletion(_ task: TaskItem) {
+    private func refreshCompletion(at boundary: Date) async {
+        do {
+            // 待機中に時計が戻った場合も、実時刻が境界に達するまで待つ。
+            var remaining = boundary.timeIntervalSinceNow
+            while remaining > 0 {
+                try await Task.sleep(for: .seconds(remaining))
+                remaining = boundary.timeIntervalSinceNow
+            }
+            try Task.checkCancellation()
+            completionTime = .now
+        } catch is CancellationError {
+            // 画面が閉じるか、待機する境界が変わった。
+        } catch {
+            completionError = error.localizedDescription
+        }
+    }
+
+    private func toggleCompletion(_ task: TaskItem, displayedKey: String?) {
         let now = Date.now
         defer { completionTime = now }
         do {
-            try TaskCompletion.apply(.toggle, to: task, context: modelContext, now: now)
+            try TaskCompletion.toggleDisplayedPeriod(displayedKey, for: task, context: modelContext, now: now)
         } catch {
             completionError = error.localizedDescription
         }

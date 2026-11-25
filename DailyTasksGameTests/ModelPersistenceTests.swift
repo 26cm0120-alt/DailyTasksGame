@@ -1,3 +1,4 @@
+import AppCore
 import Foundation
 import SwiftData
 import Testing
@@ -195,6 +196,44 @@ struct ModelPersistenceTests {
             #expect(key == "2026-11-16")
             #expect(!TaskCompletion.isCompleted(in: records, periodKey: key))
             #expect(TaskCompletion.isCompleted(in: records, periodKey: "2026-11-15"))
+        }
+    }
+
+    @Test func tapAtWeeklyResetWaitsForTheDisplayedPeriodToRefresh() throws {
+        try withTemporaryStore { url in
+            try seedCompletionTask(at: url, kind: .weekly)
+            try applyCompletionChanges([(.complete, "2026-11-15T18:59:59Z")], at: url)
+
+            let context = try completionContext(at: url)
+            let task = try #require(context.fetch(FetchDescriptor<TaskItem>()).first)
+            let zone = try #require(TimeZone(identifier: "Asia/Tokyo"))
+            let boundary = try #require(ISO8601DateFormatter().date(from: "2026-11-15T19:00:00Z"))
+            let before = TaskCompletion.periods(for: task.game, now: boundary.addingTimeInterval(-1), timeZone: zone)
+            let beforePeriods = try #require(before)
+            #expect(beforePeriods.weekly.end == boundary)
+            #expect(beforePeriods.daily.end > boundary)
+            let previousKey = TaskCompletion.periodKey(for: task.kind, in: beforePeriods)
+            #expect(previousKey == "2026-11-09")
+
+            try TaskCompletion.toggleDisplayedPeriod(previousKey, for: task, context: context, now: boundary, timeZone: zone)
+            let unchangedRecords = try context.fetch(FetchDescriptor<CompletionRecord>())
+            #expect(unchangedRecords.map(\.periodKey) == ["2026-11-09"])
+
+            let after = TaskCompletion.periods(for: task.game, now: boundary, timeZone: zone)
+            let currentKey = TaskCompletion.periodKey(for: task.kind, in: after)
+            #expect(currentKey == "2026-11-16")
+            #expect(!TaskCompletion.isCompleted(in: unchangedRecords, periodKey: currentKey))
+            try TaskCompletion.toggleDisplayedPeriod(currentKey, for: task, context: context, now: boundary, timeZone: zone)
+
+            let reopened = try completionContext(at: url)
+            let records = try reopened.fetch(FetchDescriptor<CompletionRecord>())
+            #expect(records.map(\.periodKey).sorted() == ["2026-11-09", "2026-11-16"])
+            #expect(TaskCompletion.isCompleted(in: records, periodKey: currentKey))
+
+            try TaskCompletion.toggleDisplayedPeriod(currentKey, for: task, context: context, now: boundary, timeZone: zone)
+            let afterCancellation = try completionContext(at: url)
+            let remaining = try afterCancellation.fetch(FetchDescriptor<CompletionRecord>())
+            #expect(remaining.map(\.periodKey) == ["2026-11-09"])
         }
     }
 

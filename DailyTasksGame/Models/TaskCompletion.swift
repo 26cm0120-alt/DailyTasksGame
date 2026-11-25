@@ -49,6 +49,24 @@ enum TaskCompletion {
             throw CompletionError.periodUnavailable
         }
 
+        try apply(change, to: task, periodKey: key, context: context, now: now)
+    }
+
+    static func toggleDisplayedPeriod(
+        _ displayedKey: String?, for task: TaskItem, context: ModelContext,
+        now: Date, timeZone: TimeZone = .autoupdatingCurrent
+    ) throws {
+        let periods = periods(for: task.game, now: now, timeZone: timeZone)
+        let currentKey = periodKey(for: task.kind, in: periods)
+        // 境界とタップが重なったら、画面の更新を優先して記録を変更しない。
+        guard displayedKey == currentKey else { return }
+        guard let displayedKey else { throw CompletionError.periodUnavailable }
+        try apply(.toggle, to: task, periodKey: displayedKey, context: context, now: now)
+    }
+
+    private static func apply(
+        _ change: Change, to task: TaskItem, periodKey key: String, context: ModelContext, now: Date
+    ) throws {
         let taskID = task.id
         let matching = try context.fetch(FetchDescriptor<CompletionRecord>(
             predicate: #Predicate { $0.task.id == taskID && $0.periodKey == key }
