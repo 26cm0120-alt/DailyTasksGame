@@ -75,6 +75,34 @@ struct GameDayCalculatorTests {
         }
     }
 
+    @Test func weeklyBoundaryIsIndependentOfDailyReset() throws {
+        let timeZone = try #require(TimeZone(identifier: "Asia/Tokyo"))
+        // 地方時の月曜4:00。日次の5:00より先に週次だけが切り替わる。
+        let boundary = try instant("2026-11-15T19:00:00Z")
+        func calculate(_ now: Date) throws -> GameDayCalculator.Periods {
+            try #require(GameDayCalculator.periods(
+                now: now, dailyReset: .init(hour: 5, minute: 0),
+                weeklyResetWeekday: 2, weeklyReset: .init(hour: 4, minute: 0),
+                calendar: Calendar(identifier: .gregorian), timeZone: timeZone
+            ))
+        }
+        let before = try calculate(boundary.addingTimeInterval(-1))
+        let at = try calculate(boundary)
+
+        #expect(before.weekly.key == "2026-11-09")
+        #expect(before.weekly.start == (try instant("2026-11-08T19:00:00Z")))
+        #expect(before.weekly.end == boundary)
+        #expect(at.weekly.key == "2026-11-16")
+        #expect(at.weekly.start == boundary)
+        #expect(at.weekly.end == (try instant("2026-11-22T19:00:00Z")))
+
+        // 週次境界の前後でも日次は日曜5:00から月曜5:00の同じ期間に属する。
+        #expect(before.daily.key == "2026-11-15")
+        #expect(before.daily.start == (try instant("2026-11-14T20:00:00Z")))
+        #expect(before.daily.end == (try instant("2026-11-15T20:00:00Z")))
+        #expect(at.daily == before.daily)
+    }
+
     @Test func weeklyKeyIsIndependentOfDailyReset() throws {
         let timeZone = try #require(TimeZone(identifier: "Asia/Tokyo"))
         let periods = try #require(GameDayCalculator.periods(
