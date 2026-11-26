@@ -1,3 +1,4 @@
+import AppCore
 import Foundation
 import SwiftData
 
@@ -11,6 +12,8 @@ final class Game {
     var isActive: Bool
     var sortOrder: Int
     var note: String
+    // 旧ストアから追加される属性の既定値にも使う。
+    var colorPaletteIndex: Int = 0
 
     // 削除の連鎖に必要な、TaskItem.game の逆参照。
     @Relationship(deleteRule: .cascade, inverse: \TaskItem.game)
@@ -23,7 +26,8 @@ final class Game {
         weeklyResetWeekday: Int = 2,
         weeklyResetTime: ResetTime? = nil,
         isActive: Bool = true,
-        note: String = ""
+        note: String = "",
+        colorPaletteIndex: Int = 0
     ) throws {
         try validateModelName(name)
         precondition((1...7).contains(weeklyResetWeekday))
@@ -36,5 +40,6 @@ final class Game {
         self.isActive = isActive
         self.sortOrder = sortOrder
         self.note = note
+        self.colorPaletteIndex = GameColorPalette.clampedIndex(colorPaletteIndex)
     }
 }

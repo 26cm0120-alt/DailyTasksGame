@@ -1,40 +1,50 @@
 import AppCore
+import Combine
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct TodayView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Game.sortOrder) private var games: [Game]
+    @Query(sort: \TaskItem.sortOrder) private var tasks: [TaskItem]
+    @Query private var records: [CompletionRecord]
+    @State private var editMode: EditMode = .inactive
+    @State private var completionTime = Date.now
+    @State private var clockRevision = 0
+    @State private var expandedCompletedGames: Set<UUID> = []
+    @State private var completionError: String?
     @State private var isAddingGame = false
     @State private var reorderError: String?
     @State private var deletionTarget: Game?
     @State private var deletionError: String?
 
     var body: some View {
+        let cards = makeCards()
+        let nextReset = cards.compactMap { $0.nextReset?.end }.min()
+        let nextMidnight = Calendar.autoupdatingCurrent.dateInterval(of: .day, for: completionTime)?.end
+        let nextRefresh = [nextReset, nextMidnight].compactMap { $0 }.min()
+        let activeRefresh = scenePhase == .active ? nextRefresh : nil
+
         NavigationStack {
-            List {
-                ForEach(games) { game in
-                    NavigationLink {
-                        GameDetailView(game: game)
-                    } label: {
-                        HStack {
-                            Text(game.name)
-                            if !game.isActive {
-                                Spacer()
-                                Text("休止中")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
+            Group {
+                if editMode.isEditing {
+                    managementList
+                } else {
+                    todayList(cards)
                 }
-                .onMove(perform: moveGames)
-                .onDelete(perform: requestGameDeletion)
             }
+            .environment(\.editMode, $editMode)
             .navigationTitle("今日")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    EditButton()
+                    if !games.isEmpty || editMode.isEditing {
+                        Button(editMode.isEditing ? "完了" : "編集") {
+                            editMode = editMode.isEditing ? .inactive : .active
+                        }
+                    }
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button("ゲームを追加", systemImage: "plus") {
@@ -43,7 +53,15 @@ struct TodayView: View {
                 }
             }
             .sheet(isPresented: $isAddingGame) {
-                GameAddView()
+                GameAddView(existingGameCount: games.count)
+            }
+            .alert("完了状態を更新できませんでした", isPresented: Binding(
+                get: { completionError != nil },
+                set: { if !$0 { completionError = nil } }
+            )) {
+                Button("OK", role: .cancel) { completionError = nil }
+            } message: {
+                Text(completionError ?? "")
             }
             .alert("並び順を保存できませんでした", isPresented: Binding(
                 get: { reorderError != nil },
@@ -71,6 +89,142 @@ struct TodayView: View {
             } message: {
                 Text(deletionError ?? "")
             }
+        }
+        .onAppear { updateCompletionTime() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { updateCompletionTime() }
+        }
+        .onDeviceClockChange {
+            updateCompletionTime()
+            clockRevision &+= 1
+        }
+        .task(id: BoundaryWaitID(date: activeRefresh, clockRevision: clockRevision)) {
+            guard let activeRefresh else { return }
+            await refresh(at: activeRefresh)
+        }
+    }
+
+    private var managementList: some View {
+        List {
+            ForEach(games) { game in
+                NavigationLink {
+                    GameDetailView(game: game)
+                } label: {
+                    HStack {
+                        Text(game.name)
+                        if !game.isActive {
+                            Spacer()
+                            Text("休止中").foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .onMove(perform: moveGames)
+            .onDelete(perform: requestGameDeletion)
+        }
+    }
+
+    private func todayList(_ cards: [TodayCardData]) -> some View {
+        List {
+            TodayHeader(date: completionTime, progresses: cards.map(\.progress))
+                .modifier(TodayListRow(insets: EdgeInsets(top: 10, leading: 16, bottom: 14, trailing: 16)))
+
+            if cards.isEmpty {
+                if games.isEmpty {
+                    ContentUnavailableView {
+                        Label("ゲームを登録", systemImage: "gamecontroller")
+                    } description: {
+                        Text("ゲームを追加すると、今日のタスクをここで確認できます。")
+                    } actions: {
+                        Button("ゲームを追加") { isAddingGame = true }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    .modifier(TodayListRow())
+                } else {
+                    ContentUnavailableView {
+                        Label("有効なゲームがありません", systemImage: "gamecontroller")
+                    } description: {
+                        Text("ゲームを追加するか、「編集」から休止中のゲームを開けます。")
+                    }
+                    .modifier(TodayListRow())
+                }
+            }
+
+            ForEach(cards) { card in
+                TodayGameCard(
+                    data: card,
+                    date: completionTime,
+                    isExpanded: !card.progress.isComplete || expandedCompletedGames.contains(card.id),
+                    toggleExpansion: { toggleExpansion(for: card.id) },
+                    toggleTask: { toggleCompletion($0) }
+                )
+                .modifier(TodayListRow())
+                .swipeActions(allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        deletionTarget = card.game
+                    } label: {
+                        Label("削除", systemImage: "trash")
+                    }
+                }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(TodayAurora().ignoresSafeArea())
+        .onChange(of: cards.filter { $0.progress.isComplete }.map(\.id)) { _, completeIDs in
+            expandedCompletedGames.formIntersection(completeIDs)
+        }
+    }
+
+    private func makeCards() -> [TodayCardData] {
+        let tasksByGame = Dictionary(grouping: tasks, by: { $0.game.id })
+        let recordsByTask = Dictionary(grouping: records, by: { $0.task.id })
+        let cards = games.compactMap { game in
+            TodayCardData(
+                game: game,
+                tasks: tasksByGame[game.id, default: []],
+                recordsByTask: recordsByTask,
+                date: completionTime
+            )
+        }
+        return cards.filter { !$0.progress.isComplete } + cards.filter { $0.progress.isComplete }
+    }
+
+    private func toggleExpansion(for id: UUID) {
+        if expandedCompletedGames.remove(id) == nil {
+            expandedCompletedGames.insert(id)
+        }
+    }
+
+    private func updateCompletionTime(to now: Date = .now) {
+        completionTime = now
+    }
+
+    private func refresh(at boundary: Date) async {
+        do {
+            // 画面を離れるか次の境界が変わると、待機が取り消される。
+            var remaining = boundary.timeIntervalSinceNow
+            while remaining > 0 {
+                try await Task.sleep(for: .seconds(remaining))
+                remaining = boundary.timeIntervalSinceNow
+            }
+            try Task.checkCancellation()
+            updateCompletionTime()
+        } catch is CancellationError {
+            return
+        } catch {
+            completionError = error.localizedDescription
+        }
+    }
+
+    private func toggleCompletion(_ row: TodayTaskData) {
+        let now = Date.now
+        defer { updateCompletionTime(to: now) }
+        guard row.task.isEnabled, row.task.game.isActive else { return }
+        do {
+            try TaskCompletion.toggleDisplayedPeriod(row.periodKey, for: row.task, context: modelContext, now: now)
+        } catch {
+            completionError = error.localizedDescription
         }
     }
 
@@ -109,5 +263,22 @@ struct TodayView: View {
             modelContext.rollback()
             deletionError = error.localizedDescription
         }
+    }
+}
+
+
+// 時計が跳んだら、境界が同じでも実時刻に合わせて残りの待機時間を計算し直す。
+struct BoundaryWaitID: Equatable {
+    let date: Date?
+    let clockRevision: Int
+}
+
+extension View {
+    func onDeviceClockChange(perform action: @escaping () -> Void) -> some View {
+        let center = NotificationCenter.default
+        let changes = center.publisher(for: .NSSystemClockDidChange)
+            .merge(with: center.publisher(for: UIApplication.significantTimeChangeNotification))
+            .receive(on: DispatchQueue.main)
+        return onReceive(changes) { _ in action() }
     }
 }

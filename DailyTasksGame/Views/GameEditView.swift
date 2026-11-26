@@ -1,3 +1,4 @@
+import AppCore
 import SwiftData
 import SwiftUI
 
@@ -12,6 +13,7 @@ struct GameEditView: View {
     @State private var weeklyResetTime: ResetTime
     @State private var note: String
     @State private var isPaused: Bool
+    @State private var colorPaletteIndex: Int
     @State private var saveError: String?
 
     init(game: Game) {
@@ -22,6 +24,7 @@ struct GameEditView: View {
         _weeklyResetWeekday = State(initialValue: game.weeklyResetWeekday)
         _weeklyResetTime = State(initialValue: game.weeklyResetTime)
         _note = State(initialValue: game.note)
+        _colorPaletteIndex = State(initialValue: GameColorPalette.clampedIndex(game.colorPaletteIndex))
         _isPaused = State(initialValue: !game.isActive)
     }
 
@@ -34,6 +37,10 @@ struct GameEditView: View {
             Form {
                 Section("名前") {
                     TextField("ゲーム名（必須）", text: $name)
+                }
+
+                Section("テーマカラー") {
+                    GameColorPicker(selection: $colorPaletteIndex)
                 }
 
                 Section("日次リセット") {
@@ -92,6 +99,7 @@ struct GameEditView: View {
         game.weeklyResetWeekday = weeklyResetWeekday
         game.weeklyResetTime = weeklyResetTime
         game.note = note
+        game.colorPaletteIndex = colorPaletteIndex
         game.isActive = !isPaused
 
         do {

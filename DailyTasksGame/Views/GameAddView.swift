@@ -1,3 +1,4 @@
+import AppCore
 import SwiftData
 import SwiftUI
 
@@ -11,7 +12,12 @@ struct GameAddView: View {
     // 日次と同じ初期値を持つが、入力中の日次変更には連動させない。
     @State private var weeklyResetTime = ResetTime(hour: 5, minute: 0)
     @State private var note = ""
+    @State private var colorPaletteIndex: Int
     @State private var saveError: String?
+
+    init(existingGameCount: Int) {
+        _colorPaletteIndex = State(initialValue: GameColorPalette.defaultIndex(existingGameCount: existingGameCount))
+    }
 
     private var isNameValid: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -22,6 +28,10 @@ struct GameAddView: View {
             Form {
                 Section("名前") {
                     TextField("ゲーム名（必須）", text: $name)
+                }
+
+                Section("テーマカラー") {
+                    GameColorPicker(selection: $colorPaletteIndex)
                 }
 
                 Section("日次リセット") {
@@ -92,7 +102,8 @@ struct GameAddView: View {
                 weeklyResetWeekday: weeklyResetWeekday,
                 weeklyResetTime: weeklyResetTime,
                 isActive: true,
-                note: note
+                note: note,
+                colorPaletteIndex: colorPaletteIndex
             )
             modelContext.insert(game)
             do {
