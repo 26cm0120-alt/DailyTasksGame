@@ -14,6 +14,7 @@ struct GameDetailView: View {
     @State private var deletionError: String?
     @State private var completionError: String?
     @State private var completionTime = Date.now
+    @State private var clockRevision = 0
 
     init(game: Game) {
         self.game = game
@@ -43,11 +44,15 @@ struct GameDetailView: View {
             .onDelete(perform: requestTaskDeletion)
         }
         .navigationTitle(game.name)
-        .onAppear { completionTime = .now }
+        .onAppear { updateCompletionTime() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { completionTime = .now }
+            if phase == .active { updateCompletionTime() }
         }
-        .task(id: activeBoundary) {
+        .onDeviceClockChange {
+            updateCompletionTime()
+            clockRevision &+= 1
+        }
+        .task(id: BoundaryWaitID(date: activeBoundary, clockRevision: clockRevision)) {
             guard let activeBoundary else { return }
             await refreshCompletion(at: activeBoundary)
         }
@@ -64,13 +69,13 @@ struct GameDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $isEditingGame, onDismiss: { completionTime = .now }) {
+        .sheet(isPresented: $isEditingGame, onDismiss: { updateCompletionTime() }) {
             GameEditView(game: game)
         }
         .sheet(isPresented: $isAddingTask) {
             TaskAddView(game: game)
         }
-        .sheet(item: $selectedTask, onDismiss: { completionTime = .now }) { task in
+        .sheet(item: $selectedTask, onDismiss: { updateCompletionTime() }) { task in
             TaskEditView(task: task)
         }
         .alert("完了状態を更新できませんでした", isPresented: Binding(
@@ -111,6 +116,10 @@ struct GameDetailView: View {
 
     @State private var selectedTask: TaskItem?
 
+    private func updateCompletionTime(to now: Date = .now) {
+        completionTime = now
+    }
+
     private func refreshCompletion(at boundary: Date) async {
         do {
             // 待機中に時計が戻った場合も、実時刻が境界に達するまで待つ。
@@ -120,7 +129,7 @@ struct GameDetailView: View {
                 remaining = boundary.timeIntervalSinceNow
             }
             try Task.checkCancellation()
-            completionTime = .now
+            updateCompletionTime()
         } catch is CancellationError {
             // 画面が閉じるか、待機する境界が変わった。
         } catch {
@@ -130,7 +139,7 @@ struct GameDetailView: View {
 
     private func toggleCompletion(_ task: TaskItem, displayedKey: String?) {
         let now = Date.now
-        defer { completionTime = now }
+        defer { updateCompletionTime(to: now) }
         do {
             try TaskCompletion.toggleDisplayedPeriod(displayedKey, for: task, context: modelContext, now: now)
         } catch {

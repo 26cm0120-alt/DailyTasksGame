@@ -1,6 +1,8 @@
 import AppCore
+import Combine
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct TodayView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -10,6 +12,7 @@ struct TodayView: View {
     @Query private var records: [CompletionRecord]
     @State private var editMode: EditMode = .inactive
     @State private var completionTime = Date.now
+    @State private var clockRevision = 0
     @State private var expandedCompletedGames: Set<UUID> = []
     @State private var completionError: String?
     @State private var isAddingGame = false
@@ -87,11 +90,15 @@ struct TodayView: View {
                 Text(deletionError ?? "")
             }
         }
-        .onAppear { completionTime = .now }
+        .onAppear { updateCompletionTime() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { completionTime = .now }
+            if phase == .active { updateCompletionTime() }
         }
-        .task(id: activeRefresh) {
+        .onDeviceClockChange {
+            updateCompletionTime()
+            clockRevision &+= 1
+        }
+        .task(id: BoundaryWaitID(date: activeRefresh, clockRevision: clockRevision)) {
             guard let activeRefresh else { return }
             await refresh(at: activeRefresh)
         }
@@ -189,6 +196,10 @@ struct TodayView: View {
         }
     }
 
+    private func updateCompletionTime(to now: Date = .now) {
+        completionTime = now
+    }
+
     private func refresh(at boundary: Date) async {
         do {
             // 画面を離れるか次の境界が変わると、待機が取り消される。
@@ -198,7 +209,7 @@ struct TodayView: View {
                 remaining = boundary.timeIntervalSinceNow
             }
             try Task.checkCancellation()
-            completionTime = .now
+            updateCompletionTime()
         } catch is CancellationError {
             return
         } catch {
@@ -208,7 +219,7 @@ struct TodayView: View {
 
     private func toggleCompletion(_ row: TodayTaskData) {
         let now = Date.now
-        defer { completionTime = now }
+        defer { updateCompletionTime(to: now) }
         guard row.task.isEnabled, row.task.game.isActive else { return }
         do {
             try TaskCompletion.toggleDisplayedPeriod(row.periodKey, for: row.task, context: modelContext, now: now)
@@ -252,5 +263,22 @@ struct TodayView: View {
             modelContext.rollback()
             deletionError = error.localizedDescription
         }
+    }
+}
+
+
+// 時計が跳んだら、境界が同じでも実時刻に合わせて残りの待機時間を計算し直す。
+struct BoundaryWaitID: Equatable {
+    let date: Date?
+    let clockRevision: Int
+}
+
+extension View {
+    func onDeviceClockChange(perform action: @escaping () -> Void) -> some View {
+        let center = NotificationCenter.default
+        let changes = center.publisher(for: .NSSystemClockDidChange)
+            .merge(with: center.publisher(for: UIApplication.significantTimeChangeNotification))
+            .receive(on: DispatchQueue.main)
+        return onReceive(changes) { _ in action() }
     }
 }
